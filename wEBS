@@ -1,0 +1,107 @@
+local module = {}
+
+local ds_version = 1
+
+local http = game:GetService("HttpService")
+local ds = game:GetService("DataStoreService"):GetDataStore("DiscordErrors")
+
+local Hooks = {
+	["Webhook"] = "https://discordapp.com/api/webhooks/876660176197943337/qt7bfdbFBIfOrsWJ8Hvd6V8hjParpWI6csQ_LY7mF1apytcKf5xedoWoAZ0gkgwnDFjf", -- Key name is web hook name, Key value is webhook url
+}
+
+local function UpdateError(Log, id, Data)
+	local dStore = ds:GetAsync(Log)
+	if dStore then
+		if Data and Data[1] and Data[2] ~= nil then
+			local success, m = pcall(function()
+				ds:UpdateAysnc(Log, function(oldData)
+					if oldData[id] then
+						if oldData[id][Data[1]] then
+							oldData[id][Data[1]] = Data[2]
+						else
+							warn("Unable to find DataName[" .. tostring(Data[1]) .. "] in ErrorID[" .. tostring(id) .. "]  in Log[" .. tostring(Log) .. "] -DiscordManager-")
+						end
+					else
+						warn("Unable to find ErrorID[" .. tostring(id) .. "] in Log[" .. tostring(Log) .. "] -DiscordManager-")
+					end
+					return oldData
+				end)
+			end)
+			if not success then
+				warn("Unable to update Log[" .. tostring(Log) .. "] -DiscordManager-")
+			end
+		else
+			warn("Invalid Data[nil] -DiscordManager-")
+		end
+	else
+		warn("Unable to update Error[" ..tostring(id).."] For Log[" .. tostring(Log) .. "] -DiscordManager-")
+	end
+end
+
+local function LogError(hook, message, dError)
+	local data = ds:GetAsync("Log_" .. ds_version)
+	if not data then
+		local success, m = pcall(function()
+			return ds:UpdateAsync("Log_" .. ds_version, function(oldData)
+				oldData[#oldData+1] = {
+					["hook"] = hook,
+					["message"] = message,
+					["Error"] = dError,
+					["Time"] = os.time(),
+					["Sent"] = false
+				}
+				return oldData
+			end)
+		end)
+		if not success then
+			-- lmao dude roblox just hates you, both httpservice and datastore are down
+			print("------------------ \n Could not log Error: \n")
+			print("Hook:", hook)
+			print("Message:", message)
+			print("Error:", dError)
+			print("Time:", os.time())
+			print("------------------")
+		end
+	else
+		data = {
+			[1] = {
+				["hook"] = hook,
+				["message"] = message,
+				["Error"] = dError,
+				["Time"] = os.time(),
+				["Sent"] = false
+			}
+		}
+		ds:SetAsync("Log_" .. ds_version, data)
+	end
+end
+
+local function Send(hook, message)
+	if Hooks[hook] then
+		local HookData = {
+			['username'] = hook, 
+			['content'] = message
+		}
+		HookData = http:JSONEncode(HookData)
+		local success, d = pcall(function() return http:PostAsync(Hooks[hook], HookData) end)
+		if not success then
+			LogError(hook, message, tostring(d))
+		end
+	else
+		warn("Unable to find hook [DiscordManager]")
+	end
+end
+
+function module:Exe(func, ...)
+	func = string.lower(tostring(func))
+	local Funcs = {
+		["send"] = Send
+	}
+	if Funcs[func] then
+		return Funcs[func](...)
+	else
+		warn("Unable to find Function[" .. func .. "] -DiscordManager-")
+	end
+end
+
+return module
